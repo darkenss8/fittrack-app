@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>FitTrack</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <h1 class="brand">FitTrack</h1>
+  </header>
+
+  <main id="view" class="view"></main>
+
+  <nav class="tabbar">
+    <button class="tab" data-tab="dashboard">
+      <span class="tab-icon">&#9673;</span><span>Dashboard</span>
+    </button>
+    <button class="tab" data-tab="meals">
+      <span class="tab-icon">&#127869;</span><span>Meals</span>
+    </button>
+    <button class="tab" data-tab="workouts">
+      <span class="tab-icon">&#128170;</span><span>Workouts</span>
+    </button>
+    <button class="tab" data-tab="weight">
+      <span class="tab-icon">&#9878;</span><span>Weight</span>
+    </button>
+    <button class="tab" data-tab="settings">
+      <span class="tab-icon">&#9881;</span><span>Settings</span>
+    </button>
+  </nav>
+</div>
+
+<div id="modal-root"></div>
+<datalist id="exercise-library"></datalist>
+
+<script src="app.js"></script>
+</body>
+</html>
