@@ -444,6 +444,7 @@
   const modalRoot = document.getElementById('modal-root');
 
   function closeSheet() {
+    stopBarcodeScanner();
     modalRoot.innerHTML = '';
   }
 
@@ -462,6 +463,8 @@
       <div class="sheet-header"><h2>Add meal</h2><button class="sheet-close" data-action="backdrop-close">&#10005;</button></div>
       <input type="file" id="meal-photo-input" accept="image/*" capture="environment" style="display:none">
       <button type="button" class="photo-btn" data-action="pick-meal-photo">&#128247; Scan meal photo (AI estimate)</button>
+      <button type="button" class="photo-btn" data-action="scan-barcode">&#9974; Scan a barcode (packaged food)</button>
+      <div id="barcode-area"></div>
       <div id="meal-photo-area"></div>
       <form id="meal-form">
         <div class="field">
@@ -836,6 +839,12 @@
     } else if (action === 'analyze-meal-photo') {
       document.querySelectorAll('.ai-note').forEach(n => n.remove());
       runMealPhotoAnalysis();
+    } else if (action === 'scan-barcode') {
+      startBarcodeScan();
+    } else if (action === 'stop-barcode') {
+      stopBarcodeScanner();
+      const area = document.getElementById('barcode-area');
+      if (area) area.innerHTML = '';
     }
   });
 
@@ -845,6 +854,168 @@
       if (file) handleMealPhoto(file);
     }
   });
+
+  document.addEventListener('input', e => {
+    if (e.target.id === 'bc-amount') {
+      applyBarcodeAmount(e.target.value);
+    }
+  });
+
+  // ---------- Barcode scanning (Open Food Facts) ----------
+  let activeScanner = null;
+  let barcodeBasis = null;
+
+  function loadZXing() {
+    return new Promise((resolve, reject) => {
+      if (window.ZXing) return resolve(window.ZXing);
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+      script.onload = () => window.ZXing ? resolve(window.ZXing) : reject(new Error('Barcode scanner failed to load.'));
+      script.onerror = () => reject(new Error('Could not load the barcode scanner — check your internet connection.'));
+      document.head.appendChild(script);
+    });
+  }
+
+  function stopBarcodeScanner() {
+    if (!activeScanner) return;
+    try { if (activeScanner.controls) activeScanner.controls.stop(); } catch (e) { /* ignore */ }
+    try {
+      const v = document.getElementById('barcode-video');
+      if (v && v.srcObject) v.srcObject.getTracks().forEach(t => t.stop());
+    } catch (e) { /* ignore */ }
+    activeScanner = null;
+  }
+
+  async function startBarcodeScan() {
+    const area = document.getElementById('barcode-area');
+    if (!area) return;
+    stopBarcodeScanner();
+    barcodeBasis = null;
+    document.getElementById('meal-photo-area').innerHTML = '';
+    document.querySelectorAll('.ai-note').forEach(n => n.remove());
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      area.innerHTML = `<div class="ai-note" style="color:var(--red)">This browser can't access the camera. Open the app over https on your phone.</div>`;
+      return;
+    }
+
+    area.innerHTML = `
+      <div class="scanner-wrap">
+        <video id="barcode-video" playsinline muted autoplay></video>
+        <div class="scanner-frame"></div>
+        <button type="button" class="photo-remove" data-action="stop-barcode">&#10005;</button>
+        <div class="scanner-hint" id="barcode-hint">Point the camera at the barcode&hellip;</div>
+      </div>
+    `;
+
+    let ZXing;
+    try {
+      ZXing = await loadZXing();
+    } catch (err) {
+      area.innerHTML = `<div class="ai-note" style="color:var(--red)">${esc(err.message)}</div>`;
+      return;
+    }
+    if (!document.getElementById('barcode-video')) return; // sheet closed while loading
+
+    const video = document.getElementById('barcode-video');
+    const reader = new ZXing.BrowserMultiFormatReader();
+    activeScanner = { controls: null, reader };
+    try {
+      const controls = await reader.decodeFromConstraints(
+        { video: { facingMode: 'environment' } },
+        video,
+        (result, err, ctrl) => {
+          if (ctrl && activeScanner) activeScanner.controls = ctrl;
+          if (result) {
+            const code = result.getText();
+            stopBarcodeScanner();
+            onBarcodeDetected(code);
+          }
+        }
+      );
+      if (activeScanner) activeScanner.controls = controls;
+    } catch (err) {
+      const hint = document.getElementById('barcode-hint');
+      const msg = /permission|denied|NotAllowed/i.test(err.name + err.message)
+        ? 'Camera access was blocked. Allow camera access and try again.'
+        : 'Could not start the camera: ' + err.message;
+      if (hint) { hint.textContent = msg; hint.style.color = 'var(--red)'; }
+    }
+  }
+
+  async function onBarcodeDetected(code) {
+    const area = document.getElementById('barcode-area');
+    if (!area) return;
+    area.innerHTML = `<div class="ai-note">Looking up barcode ${esc(code)}&hellip;</div>`;
+    try {
+      const product = await lookupBarcode(code);
+      showBarcodeResult(area, product);
+    } catch (err) {
+      area.innerHTML = `
+        <div class="ai-note" style="color:var(--red)">${esc(err.message)}</div>
+        <button type="button" class="btn secondary" data-action="scan-barcode" style="margin-bottom:16px">Scan again</button>
+      `;
+    }
+  }
+
+  async function lookupBarcode(code) {
+    const url = `https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(code)}.json`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Lookup failed (' + res.status + '). Try again.');
+    const data = await res.json();
+    if (data.status !== 1 || !data.product) {
+      throw new Error('That barcode isn\'t in the Open Food Facts database yet. Try the AI photo instead, or enter it manually.');
+    }
+    const p = data.product;
+    const per100 = parseNutriments(p);
+    if (!per100.cal && !per100.p && !per100.c && !per100.f) {
+      throw new Error('Found the product, but it has no nutrition info recorded. Enter it manually or use the AI photo.');
+    }
+    let name = (p.product_name || '').trim();
+    if (p.brands) name = name ? name + ' (' + String(p.brands).split(',')[0].trim() + ')' : String(p.brands).split(',')[0].trim();
+    if (!name) name = 'Scanned item';
+    const serving = Number(p.serving_quantity) > 0 ? Number(p.serving_quantity) : 100;
+    return { name, per100, serving };
+  }
+
+  function parseNutriments(p) {
+    const n = p.nutriments || {};
+    const num = v => { const x = Number(v); return isFinite(x) ? x : 0; };
+    let cal = num(n['energy-kcal_100g']);
+    if (!cal && n['energy_100g']) cal = num(n['energy_100g']) / 4.184; // kJ -> kcal
+    return {
+      cal: Math.round(cal),
+      p: Math.round(num(n['proteins_100g'])),
+      c: Math.round(num(n['carbohydrates_100g'])),
+      f: Math.round(num(n['fat_100g']))
+    };
+  }
+
+  function showBarcodeResult(area, product) {
+    barcodeBasis = product;
+    const form = document.getElementById('meal-form');
+    if (form) form.querySelector('[name="name"]').value = product.name;
+    area.innerHTML = `
+      <div class="ai-note">Found: <b>${esc(product.name)}</b>. Set how much you ate &mdash; calories and macros update automatically (per 100g: ${product.per100.cal} kcal).</div>
+      <div class="field">
+        <label>Amount eaten (grams)</label>
+        <input type="number" id="bc-amount" min="0" step="1" value="${product.serving}">
+      </div>
+      <button type="button" class="photo-remove" style="position:static; float:right; margin-bottom:8px" data-action="stop-barcode">&#10005;</button>
+    `;
+    applyBarcodeAmount(product.serving);
+  }
+
+  function applyBarcodeAmount(grams) {
+    if (!barcodeBasis) return;
+    const form = document.getElementById('meal-form');
+    if (!form) return;
+    const factor = (Number(grams) || 0) / 100;
+    form.querySelector('[name="calories"]').value = Math.round(barcodeBasis.per100.cal * factor);
+    form.querySelector('[name="protein"]').value = Math.round(barcodeBasis.per100.p * factor);
+    form.querySelector('[name="carbs"]').value = Math.round(barcodeBasis.per100.c * factor);
+    form.querySelector('[name="fat"]').value = Math.round(barcodeBasis.per100.f * factor);
+  }
 
   // ---------- AI meal photo analysis ----------
   let pendingPhoto = null;
