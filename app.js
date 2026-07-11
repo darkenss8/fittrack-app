@@ -3,7 +3,9 @@
 
   const STORAGE_KEY = 'fittrack_data_v1';
 
-  const EXERCISE_LIBRARY = [
+  // Prefer the bundled 800+ exercise library (exercises.js). Fall back to this
+  // built-in shortlist if that file is missing.
+  const EXERCISE_LIBRARY = (window.EXERCISE_LIBRARY && window.EXERCISE_LIBRARY.length) ? window.EXERCISE_LIBRARY : [
     'Barbell bench press', 'Incline bench press', 'Dumbbell bench press', 'Incline dumbbell press',
     'Push-up', 'Dumbbell fly', 'Cable fly', 'Chest dip', 'Pec deck',
     'Pull-up', 'Chin-up', 'Lat pulldown', 'Barbell row', 'Dumbbell row',
