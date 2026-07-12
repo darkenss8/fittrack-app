@@ -903,33 +903,84 @@
 
   // ---------- Exercise demo (form photos + YouTube) ----------
   let demoTimer = null;
+  let _exIndex = null;
+
+  function normalizeExName(s) {
+    return String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function buildExIndex() {
+    if (_exIndex) return _exIndex;
+    _exIndex = [];
+    const imgs = window.EXERCISE_IMAGES || {};
+    for (const name in imgs) {
+      const norm = normalizeExName(name);
+      _exIndex.push({ name, norm, tokens: new Set(norm.split(' ').filter(Boolean)), paths: imgs[name] });
+    }
+    return _exIndex;
+  }
+
+  // Find the best-matching exercise photo set for an arbitrary name
+  // (exact -> normalized -> fuzzy token overlap). Returns {name, paths} or null.
+  function findExerciseImages(name) {
+    const imgs = window.EXERCISE_IMAGES || {};
+    if (imgs[name]) return { name: name, paths: imgs[name] };
+    const q = normalizeExName(name);
+    if (!q) return null;
+    const idx = buildExIndex();
+    for (const e of idx) if (e.norm === q) return { name: e.name, paths: e.paths };
+    const qtok = q.split(' ').filter(Boolean);
+    const qset = new Set(qtok);
+    const qlast = qtok[qtok.length - 1];
+    let best = null, bestScore = 0;
+    for (const e of idx) {
+      let shared = 0;
+      qset.forEach(t => { if (e.tokens.has(t)) shared++; });
+      const union = qset.size + e.tokens.size - shared;
+      let score = union ? shared / union : 0;
+      if (qlast && e.tokens.has(qlast)) score += 0.15; // reward matching the movement word
+      if (score > bestScore) { bestScore = score; best = e; }
+    }
+    return bestScore >= 0.4 ? { name: best.name, paths: best.paths } : null;
+  }
 
   function openExerciseDemo(name) {
     closeExerciseDemo();
     const root = document.getElementById('demo-root');
     if (!root) return;
     const base = window.EXERCISE_IMG_BASE || '';
-    const rel = (window.EXERCISE_IMAGES && window.EXERCISE_IMAGES[name]) || null;
-    const imgs = rel ? rel.map(p => base + p) : null;
-    const yt = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(name + ' proper form how to');
+    const match = findExerciseImages(name);
+    const imgs = match ? match.paths.map(p => base + p) : null;
+    const approx = match && normalizeExName(match.name) !== normalizeExName(name);
+    // YouTube Shorts search — fast, short clips
+    const yt = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(name + ' exercise form') + '&sp=EgIYAQ%3D%3D';
     root.innerHTML = `
       <div class="sheet-backdrop demo-backdrop" data-action="close-demo">
         <div class="demo-card" data-demo>
           <div class="sheet-header"><h2>${esc(name)}</h2><button class="sheet-close" data-action="close-demo">&#10005;</button></div>
-          ${imgs
+          <div id="demo-photo-area">${imgs
             ? `<div class="demo-img-wrap"><img id="demo-img" src="${imgs[0]}" alt="${esc(name)} demonstration"></div>
-               <div class="ai-note" style="margin-top:0">Looping the start and end positions of the movement.</div>`
-            : `<div class="ai-note" style="margin-top:0">No built-in demo photo for this exercise &mdash; use the video below.</div>`}
-          <a class="btn" href="${yt}" target="_blank" rel="noopener">&#9654; Watch a video on YouTube</a>
+               <div class="ai-note" style="margin-top:0">${approx ? 'Closest match: <b>' + esc(match.name) + '</b>. ' : ''}Looping the start and end positions of the movement.</div>`
+            : `<div class="ai-note" style="margin-top:0">No built-in photo for this one &mdash; tap the video below.</div>`}</div>
+          <a class="btn" href="${yt}" target="_blank" rel="noopener">&#9654; Watch a short video on YouTube</a>
         </div>
       </div>`;
-    if (imgs && imgs.length > 1) {
-      let i = 0;
-      demoTimer = setInterval(() => {
-        i = (i + 1) % imgs.length;
-        const el = document.getElementById('demo-img');
-        if (el) el.src = imgs[i];
-      }, 1100);
+    if (imgs) {
+      const el = document.getElementById('demo-img');
+      // If the photo fails to load (network/host issue), fall back to video-only
+      if (el) el.onerror = () => {
+        if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
+        const area = document.getElementById('demo-photo-area');
+        if (area) area.innerHTML = `<div class="ai-note" style="margin-top:0">Couldn't load the demo photo &mdash; tap the video below.</div>`;
+      };
+      if (imgs.length > 1) {
+        let i = 0;
+        demoTimer = setInterval(() => {
+          i = (i + 1) % imgs.length;
+          const cur = document.getElementById('demo-img');
+          if (cur) cur.src = imgs[i];
+        }, 1100);
+      }
     }
   }
 
