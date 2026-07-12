@@ -267,14 +267,38 @@
       const n = (w.exercises || []).length;
       sub = n ? `${n} exercise${n === 1 ? '' : 's'}` : 'Strength';
     }
+    const tappable = w.type !== 'cardio' && (w.exercises || []).length;
     return `
       <div class="list-item">
-        <div class="li-main">
-          <div class="li-title">${esc(w.name || (w.type === 'cardio' ? 'Cardio' : 'Strength'))}</div>
-          <div class="li-sub">${sub}</div>
+        <div class="li-main"${tappable ? ` data-action="open-workout" data-id="${w.id}" style="cursor:pointer"` : ''}>
+          <div class="li-title">${esc(w.name || (w.type === 'cardio' ? 'Cardio' : 'Strength'))}${tappable ? ' <span class="li-chev">&rsaquo;</span>' : ''}</div>
+          <div class="li-sub">${sub}${tappable ? ' &middot; tap to see how' : ''}</div>
         </div>
         <button class="li-del" data-action="delete-workout" data-id="${w.id}">&#10005;</button>
       </div>`;
+  }
+
+  function openWorkoutDetail(id) {
+    const w = state.data.workouts.find(x => x.id === id);
+    if (!w) return;
+    const rows = (w.exercises || []).map(ex => {
+      const bits = [];
+      if (ex.sets) bits.push(ex.sets + ' sets');
+      if (ex.reps) bits.push(ex.reps + ' reps');
+      if (ex.weight) bits.push(ex.weight + ' ' + (state.data.settings.unit || 'kg'));
+      return `
+        <div class="list-item">
+          <div class="li-main">
+            <div class="li-title">${esc(ex.name)}</div>
+            <div class="li-sub">${bits.join(' &middot; ') || 'No sets/reps recorded'}</div>
+          </div>
+          <button type="button" class="demo-link" style="margin:0" data-action="show-demo" data-name="${esc(ex.name)}">&#9654; How to</button>
+        </div>`;
+    }).join('');
+    openSheet(`
+      <div class="sheet-header"><h2>${esc(w.name || 'Workout')}</h2><button class="sheet-close" data-action="backdrop-close">&#10005;</button></div>
+      ${rows || '<div class="empty-state">No exercises recorded.</div>'}
+    `);
   }
 
   // ---------- Weight ----------
@@ -560,6 +584,7 @@
       <div class="field">
         <label>Exercise</label>
         <input type="text" class="ex-name" placeholder="e.g. Bench press" list="exercise-library">
+        <button type="button" class="demo-link" data-action="show-demo">&#9654; How to do this</button>
       </div>
       <div class="field-row">
         <div class="field"><label>Sets</label><input type="number" class="ex-sets" min="0"></div>
@@ -787,6 +812,19 @@
       actionEl.classList.toggle('active', genPrefs.equipment.has(eq));
     } else if (action === 'generate-workout') {
       runGenerateWorkout();
+    } else if (action === 'open-workout') {
+      openWorkoutDetail(actionEl.dataset.id);
+    } else if (action === 'show-demo') {
+      let name = actionEl.dataset.name;
+      if (!name) {
+        const row = actionEl.closest('.exercise-row');
+        const input = row && row.querySelector('.ex-name');
+        name = input ? input.value.trim() : '';
+      }
+      if (!name) { alert('Type or pick an exercise first.'); return; }
+      openExerciseDemo(name);
+    } else if (action === 'close-demo') {
+      if (e.target === actionEl) closeExerciseDemo();
     } else if (action === 'open-add-weight') {
       openAddWeightSheet();
     } else if (action === 'delete-meal') {
@@ -862,6 +900,44 @@
       applyBarcodeAmount(e.target.value);
     }
   });
+
+  // ---------- Exercise demo (form photos + YouTube) ----------
+  let demoTimer = null;
+
+  function openExerciseDemo(name) {
+    closeExerciseDemo();
+    const root = document.getElementById('demo-root');
+    if (!root) return;
+    const base = window.EXERCISE_IMG_BASE || '';
+    const rel = (window.EXERCISE_IMAGES && window.EXERCISE_IMAGES[name]) || null;
+    const imgs = rel ? rel.map(p => base + p) : null;
+    const yt = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(name + ' proper form how to');
+    root.innerHTML = `
+      <div class="sheet-backdrop demo-backdrop" data-action="close-demo">
+        <div class="demo-card" data-demo>
+          <div class="sheet-header"><h2>${esc(name)}</h2><button class="sheet-close" data-action="close-demo">&#10005;</button></div>
+          ${imgs
+            ? `<div class="demo-img-wrap"><img id="demo-img" src="${imgs[0]}" alt="${esc(name)} demonstration"></div>
+               <div class="ai-note" style="margin-top:0">Looping the start and end positions of the movement.</div>`
+            : `<div class="ai-note" style="margin-top:0">No built-in demo photo for this exercise &mdash; use the video below.</div>`}
+          <a class="btn" href="${yt}" target="_blank" rel="noopener">&#9654; Watch a video on YouTube</a>
+        </div>
+      </div>`;
+    if (imgs && imgs.length > 1) {
+      let i = 0;
+      demoTimer = setInterval(() => {
+        i = (i + 1) % imgs.length;
+        const el = document.getElementById('demo-img');
+        if (el) el.src = imgs[i];
+      }, 1100);
+    }
+  }
+
+  function closeExerciseDemo() {
+    if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
+    const root = document.getElementById('demo-root');
+    if (root) root.innerHTML = '';
+  }
 
   // ---------- Barcode scanning (Open Food Facts) ----------
   let activeScanner = null;

@@ -638,3 +638,51 @@ html, body {
   text-shadow: 0 1px 3px rgba(0,0,0,0.8);
   padding: 0 12px;
 }
+
+.demo-link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 6px 0 0 0;
+  margin-top: 2px;
+}
+
+.li-chev {
+  color: var(--text-dim);
+  font-weight: 700;
+}
+
+.demo-backdrop {
+  z-index: 60;
+  align-items: center;
+  padding: 20px;
+}
+
+.demo-card {
+  background: var(--surface);
+  width: 100%;
+  max-width: 440px;
+  border-radius: 18px;
+  padding: 18px;
+  max-height: 88vh;
+  overflow-y: auto;
+}
+
+.demo-img-wrap {
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+  margin-bottom: 12px;
+}
+
+.demo-img-wrap img {
+  width: 100%;
+  display: block;
+  object-fit: contain;
+  max-height: 340px;
+}
