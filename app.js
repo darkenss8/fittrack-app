@@ -128,9 +128,29 @@
 
   // ---------- render dispatch ----------
   const viewEl = document.getElementById('view');
+  const brandEl = document.querySelector('.brand');
+
+  function greeting() {
+    const h = new Date().getHours();
+    if (h < 12) return 'Good morning';
+    if (h < 18) return 'Good afternoon';
+    return 'Good evening';
+  }
+
+  function renderHeader() {
+    if (!brandEl) return;
+    if (state.tab === 'dashboard') {
+      const today = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+      brandEl.innerHTML = `${greeting()} <span class="grad-text">&#128075;</span><span class="greet-sub">${esc(today)}</span>`;
+    } else {
+      const titles = { meals: 'Meals', workouts: 'Workouts', weight: 'Weight', settings: 'Settings' };
+      brandEl.innerHTML = esc(titles[state.tab] || 'FitTrack');
+    }
+  }
 
   function render() {
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === state.tab));
+    renderHeader();
     if (state.tab === 'dashboard') viewEl.innerHTML = renderDashboard();
     else if (state.tab === 'meals') viewEl.innerHTML = renderMeals();
     else if (state.tab === 'workouts') viewEl.innerHTML = renderWorkouts();
@@ -168,7 +188,7 @@
       <div class="card">
         <h2>Calories</h2>
         <div class="stat-row">
-          <div class="ring-wrap" style="background: conic-gradient(var(--accent) ${pct}%, var(--surface-2) 0)">
+          <div class="ring-wrap" style="background: conic-gradient(from -90deg, var(--ring-a) 0%, var(--ring-b) ${pct}%, var(--ring-track) ${pct}%)">
             <div class="ring-hole"></div>
             <div class="ring-center">
               <div class="num">${round(t.calories)}</div>
@@ -185,9 +205,9 @@
 
       <div class="card">
         <h2>Macros</h2>
-        ${macroBar('Protein', t.protein, g.proteinGoal, 'var(--accent)')}
-        ${macroBar('Carbs', t.carbs, g.carbGoal, 'var(--orange)')}
-        ${macroBar('Fat', t.fat, g.fatGoal, 'var(--purple)')}
+        ${macroBar('Protein', t.protein, g.proteinGoal, 'var(--protein)')}
+        ${macroBar('Carbs', t.carbs, g.carbGoal, 'var(--carbs)')}
+        ${macroBar('Fat', t.fat, g.fatGoal, 'var(--fat)')}
       </div>
 
       <div class="card">
