@@ -489,8 +489,10 @@
       <div class="sheet-header"><h2>Add meal</h2><button class="sheet-close" data-action="backdrop-close">&#10005;</button></div>
       <input type="file" id="meal-photo-input" accept="image/*" capture="environment" style="display:none">
       <button type="button" class="photo-btn" data-action="pick-meal-photo">&#128247; Scan meal photo (AI estimate)</button>
+      <button type="button" class="photo-btn" data-action="describe-meal">&#9998; Describe a meal in words (AI)</button>
       <button type="button" class="photo-btn" data-action="scan-barcode">&#9974; Scan a barcode (packaged food)</button>
       <div id="barcode-area"></div>
+      <div id="describe-area"></div>
       <div id="meal-photo-area"></div>
       <form id="meal-form">
         <div class="field">
@@ -584,7 +586,10 @@
       <div class="field">
         <label>Exercise</label>
         <input type="text" class="ex-name" placeholder="e.g. Bench press" list="exercise-library">
-        <button type="button" class="demo-link" data-action="show-demo">&#9654; How to do this</button>
+        <div class="ex-row-links">
+          <button type="button" class="demo-link" data-action="browse-exercises">&#128269; Browse list</button>
+          <button type="button" class="demo-link" data-action="show-demo">&#9654; How to do this</button>
+        </div>
       </div>
       <div class="field-row">
         <div class="field"><label>Sets</label><input type="number" class="ex-sets" min="0"></div>
@@ -825,6 +830,20 @@
       openExerciseDemo(name);
     } else if (action === 'close-demo') {
       if (e.target === actionEl) closeExerciseDemo();
+    } else if (action === 'browse-exercises') {
+      const row = actionEl.closest('.exercise-row');
+      const input = row && row.querySelector('.ex-name');
+      if (input) openExercisePicker(input);
+    } else if (action === 'close-picker') {
+      if (e.target === actionEl) closeExercisePicker();
+    } else if (action === 'picker-group') {
+      pickerGroup = actionEl.dataset.group;
+      document.querySelectorAll('[data-action="picker-group"]').forEach(b => b.classList.toggle('active', b.dataset.group === pickerGroup));
+      const s = document.getElementById('picker-search');
+      renderPickerList(s ? s.value : '');
+    } else if (action === 'pick-exercise') {
+      if (pickerTargetInput) pickerTargetInput.value = actionEl.dataset.name;
+      closeExercisePicker();
     } else if (action === 'open-add-weight') {
       openAddWeightSheet();
     } else if (action === 'delete-meal') {
@@ -885,6 +904,10 @@
       stopBarcodeScanner();
       const area = document.getElementById('barcode-area');
       if (area) area.innerHTML = '';
+    } else if (action === 'describe-meal') {
+      openDescribeMeal();
+    } else if (action === 'run-describe-meal') {
+      runDescribeMeal();
     }
   });
 
@@ -898,6 +921,8 @@
   document.addEventListener('input', e => {
     if (e.target.id === 'bc-amount') {
       applyBarcodeAmount(e.target.value);
+    } else if (e.target.id === 'picker-search') {
+      renderPickerList(e.target.value);
     }
   });
 
@@ -990,6 +1015,60 @@
     if (root) root.innerHTML = '';
   }
 
+  // ---------- Exercise picker (search + body-part filters) ----------
+  const PICKER_GROUPS = ['All', 'Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core', 'Cardio'];
+  let pickerTargetInput = null;
+  let pickerGroup = 'All';
+
+  function openExercisePicker(inputEl) {
+    pickerTargetInput = inputEl;
+    pickerGroup = 'All';
+    const root = document.getElementById('picker-root');
+    if (!root) return;
+    root.innerHTML = `
+      <div class="sheet-backdrop picker-backdrop" data-action="close-picker">
+        <div class="picker-panel" data-picker>
+          <div class="sheet-header"><h2>Pick exercise</h2><button class="sheet-close" data-action="close-picker">&#10005;</button></div>
+          <input type="text" id="picker-search" placeholder="Search 800+ exercises&hellip;" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <div class="chip-row picker-groups">
+            ${PICKER_GROUPS.map((g, i) => `<button type="button" class="chip${i === 0 ? ' active' : ''}" data-action="picker-group" data-group="${g}">${g}</button>`).join('')}
+          </div>
+          <div id="picker-list" class="picker-list"></div>
+        </div>
+      </div>`;
+    renderPickerList('');
+    const s = document.getElementById('picker-search');
+    if (s) s.focus();
+  }
+
+  function closeExercisePicker() {
+    const root = document.getElementById('picker-root');
+    if (root) root.innerHTML = '';
+    pickerTargetInput = null;
+  }
+
+  function renderPickerList(query) {
+    const list = document.getElementById('picker-list');
+    if (!list) return;
+    const names = window.EXERCISE_LIBRARY || [];
+    const groups = window.EXERCISE_GROUP || {};
+    const q = (query || '').trim().toLowerCase();
+    const filtered = names.filter(n => {
+      if (pickerGroup !== 'All' && (groups[n] || 'Other') !== pickerGroup) return false;
+      if (q && n.toLowerCase().indexOf(q) === -1) return false;
+      return true;
+    });
+    const total = filtered.length;
+    const shown = filtered.slice(0, 200);
+    list.innerHTML = shown.map(n => `
+      <button type="button" class="picker-item" data-action="pick-exercise" data-name="${esc(n)}">
+        <span class="picker-item-name">${esc(n)}</span>
+        <span class="picker-item-group">${esc(groups[n] || '')}</span>
+      </button>`).join('')
+      + (total > 200 ? `<div class="ai-note" style="margin:8px 0 0">Showing 200 of ${total}. Keep typing to narrow it down.</div>`
+        : total === 0 ? `<div class="empty-state">No matches. You can still type a custom name in the box.</div>` : '');
+  }
+
   // ---------- Barcode scanning (Open Food Facts) ----------
   let activeScanner = null;
   let barcodeBasis = null;
@@ -1021,6 +1100,8 @@
     stopBarcodeScanner();
     barcodeBasis = null;
     document.getElementById('meal-photo-area').innerHTML = '';
+    const dArea = document.getElementById('describe-area');
+    if (dArea) dArea.innerHTML = '';
     document.querySelectorAll('.ai-note').forEach(n => n.remove());
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -1149,6 +1230,60 @@
   // ---------- AI meal photo analysis ----------
   let pendingPhoto = null;
 
+  // ---------- Describe a meal in words (AI) ----------
+  function openDescribeMeal() {
+    const s = state.data.settings;
+    if (!s.anthropicApiKey) {
+      alert('Add your Anthropic API key in Settings first to use AI meal estimates.');
+      return;
+    }
+    document.getElementById('barcode-area').innerHTML = '';
+    document.getElementById('meal-photo-area').innerHTML = '';
+    const area = document.getElementById('describe-area');
+    if (!area) return;
+    area.innerHTML = `
+      <div class="field">
+        <label>Tell it what you ate</label>
+        <textarea id="describe-input" rows="3" placeholder="e.g. two eggs, two slices of toast with butter, and a black coffee"></textarea>
+      </div>
+      <button type="button" class="btn secondary" data-action="run-describe-meal" style="margin-bottom:16px">Estimate calories</button>
+    `;
+    const inp = document.getElementById('describe-input');
+    if (inp) inp.focus();
+  }
+
+  async function runDescribeMeal() {
+    const area = document.getElementById('describe-area');
+    const inp = document.getElementById('describe-input');
+    const desc = inp ? inp.value.trim() : '';
+    if (!desc) { alert('Type what you ate first.'); return; }
+    const btn = area.querySelector('[data-action="run-describe-meal"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Estimating…'; }
+    const existingErr = area.querySelector('.ai-note');
+    if (existingErr) existingErr.remove();
+    try {
+      const result = await analyzeMealText(desc);
+      const form = document.getElementById('meal-form');
+      if (form) {
+        if (result.name) form.querySelector('[name="name"]').value = result.name;
+        form.querySelector('[name="calories"]').value = result.calories;
+        form.querySelector('[name="protein"]').value = result.protein;
+        form.querySelector('[name="carbs"]').value = result.carbs;
+        form.querySelector('[name="fat"]').value = result.fat;
+      }
+      area.innerHTML = result.notes
+        ? `<div class="ai-note">AI estimate: ${esc(result.notes)} Review and adjust before saving.</div>`
+        : '';
+    } catch (err) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Retry estimate'; }
+      const errEl = document.createElement('div');
+      errEl.className = 'ai-note';
+      errEl.style.color = 'var(--red)';
+      errEl.textContent = 'Could not estimate: ' + err.message;
+      area.appendChild(errEl);
+    }
+  }
+
   function resizeImage(file, maxDim = 1568, quality = 0.88) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -1180,6 +1315,8 @@
   async function handleMealPhoto(file) {
     const area = document.getElementById('meal-photo-area');
     if (!area) return;
+    const dArea = document.getElementById('describe-area');
+    if (dArea) dArea.innerHTML = '';
     let resized;
     try {
       resized = await resizeImage(file);
@@ -1195,8 +1332,8 @@
         <button type="button" class="photo-remove" data-action="remove-meal-photo">&#10005;</button>
       </div>
       <div class="field">
-        <label>What is this, exactly? (optional, improves accuracy)</label>
-        <input type="text" id="meal-photo-caption" placeholder="e.g. turkey and swiss on rye, no mayo">
+        <label>Add any details to improve the estimate (optional)</label>
+        <textarea id="meal-photo-caption" rows="2" placeholder="e.g. it's beef not chicken · large portion · no oil · I only ate half"></textarea>
       </div>
       <button type="button" class="btn secondary" data-action="analyze-meal-photo" style="margin-bottom:16px">Analyze photo</button>
     `;
@@ -1239,44 +1376,30 @@
     }
   }
 
-  async function analyzeMealPhoto(base64, mediaType, caption) {
-    const s = state.data.settings;
-    let promptText = 'Look closely at this photo before answering. Identify the dish based strictly on what is visibly there: shape, color, texture, any visible cross-section or filling, plating, and portion size relative to the plate/container. Do not default to a generic "typical" version of a dish that looks similar if the visible evidence points elsewhere (e.g. a pale cream filling is not automatically vanilla or dairy-based; a dark filling is not automatically chocolate or meat) — describe what you actually see and let that drive the identification.';
-    if (caption) {
-      promptText += ` The user has told you what this actually is: "${caption}". Trust this over your own visual guess about identity or ingredients, and use it to make the estimate accurate.`;
-    }
-    promptText += ' Then estimate total calories and macros (protein, carbs, fat in grams) for the visible portion. In "notes", state in one sentence what specific visual evidence you based the identification on, and flag anything you had to assume rather than see.';
+  const MEAL_SCHEMA = {
+    type: 'object',
+    properties: {
+      name: { type: 'string', description: 'Short name for the meal, e.g. "Grilled chicken salad"' },
+      calories: { type: 'integer' },
+      protein: { type: 'integer', description: 'grams' },
+      carbs: { type: 'integer', description: 'grams' },
+      fat: { type: 'integer', description: 'grams' },
+      notes: { type: 'string', description: 'One short sentence noting assumptions or confidence in the estimate.' }
+    },
+    required: ['name', 'calories', 'protein', 'carbs', 'fat', 'notes'],
+    additionalProperties: false
+  };
 
+  // Shared call to the Anthropic API for a meal estimate. `content` is the
+  // user message content array (text, or image + text). Returns parsed JSON.
+  async function mealEstimateRequest(content) {
+    const s = state.data.settings;
     const body = {
       model: (s.aiModel || 'claude-opus-4-8').trim().toLowerCase(),
       max_tokens: 1024,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-          { type: 'text', text: promptText }
-        ]
-      }],
-      output_config: {
-        format: {
-          type: 'json_schema',
-          schema: {
-            type: 'object',
-            properties: {
-              name: { type: 'string', description: 'Short name for the meal, e.g. "Grilled chicken salad"' },
-              calories: { type: 'integer' },
-              protein: { type: 'integer', description: 'grams' },
-              carbs: { type: 'integer', description: 'grams' },
-              fat: { type: 'integer', description: 'grams' },
-              notes: { type: 'string', description: 'One short sentence noting assumptions or confidence in the estimate.' }
-            },
-            required: ['name', 'calories', 'protein', 'carbs', 'fat', 'notes'],
-            additionalProperties: false
-          }
-        }
-      }
+      messages: [{ role: 'user', content: content }],
+      output_config: { format: { type: 'json_schema', schema: MEAL_SCHEMA } }
     };
-
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -1287,7 +1410,6 @@
       },
       body: JSON.stringify(body)
     });
-
     if (!res.ok) {
       let msg = 'API error (' + res.status + ')';
       try {
@@ -1296,14 +1418,30 @@
       } catch (e) { /* ignore parse failure */ }
       throw new Error(msg);
     }
-
     const data = await res.json();
     if (data.stop_reason === 'refusal') {
-      throw new Error('The model declined to analyze this image.');
+      throw new Error('The model declined this request.');
     }
     const textBlock = (data.content || []).find(b => b.type === 'text');
     if (!textBlock) throw new Error('No result returned.');
     return JSON.parse(textBlock.text);
+  }
+
+  async function analyzeMealPhoto(base64, mediaType, caption) {
+    let promptText = 'Look closely at this photo before answering. Identify the dish based strictly on what is visibly there: shape, color, texture, any visible cross-section or filling, plating, and portion size relative to the plate/container. Do not default to a generic "typical" version of a dish that looks similar if the visible evidence points elsewhere (e.g. a pale cream filling is not automatically vanilla or dairy-based; a dark filling is not automatically chocolate or meat) — describe what you actually see and let that drive the identification.';
+    if (caption) {
+      promptText += ` The user added these details about the meal — they may describe what it is, the ingredients, the portion size, or how much was actually eaten. Trust these details over your own visual guess and use them to adjust the estimate: "${caption}".`;
+    }
+    promptText += ' Then estimate total calories and macros (protein, carbs, fat in grams) for the portion actually eaten. In "notes", state in one sentence what you based the identification on and flag anything you had to assume.';
+    return mealEstimateRequest([
+      { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+      { type: 'text', text: promptText }
+    ]);
+  }
+
+  async function analyzeMealText(description) {
+    const promptText = 'A user is logging a meal by describing it in their own words. Estimate the total calories and macros (protein, carbs, fat in grams) for what they describe. If they give amounts or portions, use them; if not, assume a typical single serving and say so in "notes". Give a short, clear meal name. Description: "' + description + '"';
+    return mealEstimateRequest([{ type: 'text', text: promptText }]);
   }
 
   // sheet backdrop click-outside close (click directly on backdrop, not sheet content)
