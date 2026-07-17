@@ -44,6 +44,10 @@
 html, body {
   margin: 0;
   padding: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
   background: var(--bg);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -52,9 +56,11 @@ html, body {
 }
 
 #app {
+  width: 100%;
   max-width: 480px;
   margin: 0 auto;
   min-height: 100vh;
+  overflow-x: hidden;
   background:
     radial-gradient(130% 55% at 50% -8%, rgba(124,116,255,0.16) 0%, rgba(124,116,255,0) 60%),
     var(--bg);
