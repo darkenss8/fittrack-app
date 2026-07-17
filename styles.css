@@ -45,9 +45,9 @@ html, body {
   margin: 0;
   padding: 0;
   width: 100%;
-  max-width: 100%;
-  overflow-x: hidden;
-  overscroll-behavior-x: none;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
   background: var(--bg);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -56,18 +56,20 @@ html, body {
 }
 
 #app {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
   width: 100%;
   max-width: 480px;
   margin: 0 auto;
-  min-height: 100vh;
-  overflow-x: hidden;
+  overflow: hidden;
   background:
     radial-gradient(130% 55% at 50% -8%, rgba(124,116,255,0.16) 0%, rgba(124,116,255,0) 60%),
     var(--bg);
   display: flex;
   flex-direction: column;
-  background: var(--bg);
-  position: relative;
 }
 
 .topbar {
@@ -105,6 +107,8 @@ html, body {
   flex: 1;
   padding: 8px 16px 100px 16px;
   overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 .tabbar {
@@ -497,6 +501,7 @@ html, body {
   max-width: 480px;
   max-height: 88vh;
   overflow-y: auto;
+  overflow-x: hidden;
   border-radius: 18px 18px 0 0;
   padding: 18px 18px calc(18px + env(safe-area-inset-bottom, 0)) 18px;
 }
@@ -733,6 +738,7 @@ html, body {
   padding: 18px;
   max-height: 88vh;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .demo-img-wrap {
@@ -805,6 +811,7 @@ html, body {
 .picker-list {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
 }
 
